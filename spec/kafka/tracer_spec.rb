@@ -57,7 +57,7 @@ RSpec.describe Kafka::Tracer do
     it 'tags the span as an error when the response is an error' do
       error = Kafka::Error.new('invalid format')
 
-      span = double(set_tag: true, context: nil)
+      span = double(set_tag: true, log_kv: nil, context: nil)
       scope = double(span: span)
       tracer = double(start_active_span: true)
       allow(tracer).to receive(:start_active_span).and_yield(scope)
@@ -71,6 +71,43 @@ RSpec.describe Kafka::Tracer do
       end.to raise_error(Kafka::Error)
 
       expect(span).to have_received(:set_tag).with('error', true)
+    end
+  end
+
+  describe '#patch_asyncproducer_produce' do
+    let(:producer) do
+      Kafka::AsyncProducer.new(
+        logger: nil,
+        instrumenter: ::Kafka::Instrumenter.new,
+
+        max_retries: nil,
+        retry_backoff: nil,
+
+        sync_producer: Kafka::Producer.new(
+          cluster: nil,
+          transaction_manager: nil,
+          logger: nil,
+          instrumenter: nil,
+          compressor: nil,
+          ack_timeout: nil,
+          required_acks: nil,
+          max_retries: nil,
+          retry_backoff: nil,
+          max_buffer_size: nil,
+          max_buffer_bytesize: nil
+        )
+      )
+    end
+
+    after do
+      Kafka::Tracer.remove
+    end
+
+    it 'starts a span for the message' do
+      tracer = double(start_active_span: true)
+      Kafka::Tracer.instrument(tracer: tracer)
+      producer.produce('hello', headers: {}, topic: 'test')
+      expect(tracer).to have_received(:start_active_span)
     end
   end
 
@@ -141,7 +178,7 @@ RSpec.describe Kafka::Tracer do
     it 'tags the span as an error when the response is an error' do
       error = Kafka::Error.new('invalid format')
 
-      span = double(set_tag: true, context: nil)
+      span = double(set_tag: true, log_kv: nil, context: nil)
       scope = double(span: span)
       tracer = double(start_active_span: true)
       allow(tracer).to receive(:start_active_span).and_yield(scope)
@@ -155,6 +192,7 @@ RSpec.describe Kafka::Tracer do
       end.to raise_error(Kafka::Error)
 
       expect(span).to have_received(:set_tag).with('error', true)
+      expect(span).to have_received(:log_kv).with(hash_including("error.kind": error.class.name))
     end
   end
 
@@ -185,7 +223,7 @@ RSpec.describe Kafka::Tracer do
       reference = double
       message = instance_double(Kafka::FetchedMessage,
                                 headers: {},
-                                partition: "A",
+                                partition: 'A',
                                 topic: 'test')
       allow(tracer).to receive(:extract).and_return(context)
       allow(client).to receive(:each_message_original).and_yield(message)
@@ -203,11 +241,12 @@ RSpec.describe Kafka::Tracer do
           'message_bus.partition' => 'A',
           'message_bus.destination' => 'test',
           'message_bus.pre_fetched_in_batch' => true
-        })
+        }
+      )
     end
 
     it 'tags the span as an error when the consumer errors' do
-      span = double(set_tag: nil)
+      span = double(set_tag: nil, log_kv: nil)
       scope = double(span: span)
       tracer = double
       allow(tracer).to receive(:start_active_span).and_yield(scope)
@@ -218,13 +257,14 @@ RSpec.describe Kafka::Tracer do
       allow(tracer).to receive(:extract)
       allow(client).to receive(:each_message_original).and_yield(message)
       Kafka::Tracer.instrument(tracer: tracer)
-      error = StandardError.new("stop")
+      error = StandardError.new('stop')
 
       expect do
         client.each_message(topic: 'test') { raise error }
       end.to raise_error(error)
 
       expect(span).to have_received(:set_tag).with('error', true)
+      expect(span).to have_received(:log_kv)
     end
   end
 
@@ -266,7 +306,7 @@ RSpec.describe Kafka::Tracer do
       reference = double
       message = instance_double(Kafka::FetchedMessage,
                                 headers: {},
-                                partition: "A",
+                                partition: 'A',
                                 topic: 'test')
       allow(tracer).to receive(:extract).and_return(context)
       allow(consumer).to receive(:each_message_original).and_yield(message)
@@ -284,11 +324,12 @@ RSpec.describe Kafka::Tracer do
           'message_bus.partition' => 'A',
           'message_bus.destination' => 'test',
           'message_bus.pre_fetched_in_batch' => true
-        })
+        }
+      )
     end
 
     it 'tags the span as an error when the consumer errors' do
-      span = double(set_tag: nil)
+      span = double(set_tag: nil, log_kv: nil)
       scope = double(span: span)
       tracer = double
       allow(tracer).to receive(:start_active_span).and_yield(scope)
@@ -299,13 +340,14 @@ RSpec.describe Kafka::Tracer do
       allow(tracer).to receive(:extract)
       allow(consumer).to receive(:each_message_original).and_yield(message)
       Kafka::Tracer.instrument(tracer: tracer)
-      error = StandardError.new("stop")
+      error = StandardError.new('stop')
 
       expect do
         consumer.each_message { raise error }
       end.to raise_error(error)
 
       expect(span).to have_received(:set_tag).with('error', true)
+      expect(span).to have_received(:log_kv)
     end
   end
 end

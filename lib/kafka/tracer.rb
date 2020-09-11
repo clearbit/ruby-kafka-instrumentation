@@ -5,7 +5,7 @@ require 'opentracing'
 
 module Kafka
   module Tracer
-    class IncompatibleGemVersion < StandardError; end;
+    class IncompatibleGemVersion < StandardError; end
 
     class << self
       attr_accessor :ignore_message, :tracer
@@ -22,6 +22,7 @@ module Kafka
 
         @ignore_message = ignore_message
         @tracer = tracer
+        patch_asyncproducer_produce
         patch_producer_produce
         patch_client_deliver_message
         patch_client_each_message
@@ -30,10 +31,18 @@ module Kafka
 
       def compatible_version?
         # https://github.com/zendesk/ruby-kafka/pull/604
-        Gem::Version.new(Kafka::VERSION) >= Gem::Version.new("0.7.0")
+        Gem::Version.new(Kafka::VERSION) >= Gem::Version.new('0.7.0')
       end
 
       def remove
+        if ::Kafka::AsyncProducer.method_defined?(:produce_original)
+          ::Kafka::AsyncProducer.class_eval do
+            remove_method :produce
+            alias_method :produce, :produce_original
+            remove_method :produce_original
+          end
+        end
+
         if ::Kafka::Producer.method_defined?(:produce_original)
           ::Kafka::Producer.class_eval do
             remove_method :produce
@@ -106,8 +115,49 @@ module Kafka
                                                     retries: retries)
                 rescue Kafka::Error => e
                   scope.span.set_tag('error', true)
+                  scope.span.log_kv(
+                    'event': 'error',
+                    'error.kind': e.class.name,
+                    'message': e.message
+                  )
                   raise
                 end
+              end
+            end
+
+            result
+          end
+        end
+      end
+
+      def patch_asyncproducer_produce
+        ::Kafka::AsyncProducer.class_eval do
+          alias_method :produce_original, :produce
+
+          def produce(value, topic:, **options)
+            tracer = ::Kafka::Tracer.tracer
+
+            tags = {
+              'component' => 'ruby-kafka',
+              'span.kind' => 'producer',
+              'message_bus.partition' => options.fetch(:partition, nil),
+              'message_bus.partition_key' => options.fetch(:partition_key, nil),
+              'message_bus.destination' => topic,
+              'message_bus.pending_message' => true
+            }
+
+            result = nil
+            tracer.start_active_span('kafka.async_producer', tags) do |scope|
+              begin
+                result = produce_original(value, topic, **options)
+              rescue Kafka::Error => e
+                scope.span.set_tag('error', true)
+                scope.span.log_kv(
+                  'event': 'error',
+                  'error.kind': e.class.name,
+                  'message': e.message
+                )
+                raise
               end
             end
 
@@ -122,7 +172,6 @@ module Kafka
           alias_method :produce_original, :produce
 
           def produce(value, key: nil, headers: {}, topic:, partition: nil, partition_key: nil, create_time: Time.now)
-
             if ::Kafka::Tracer.ignore_message.call(value, key, headers, topic, partition, partition_key)
               result = produce_original(
                 value,
@@ -161,6 +210,11 @@ module Kafka
                   )
                 rescue Kafka::Error => e
                   scope.span.set_tag('error', true)
+                  scope.span.log_kv(
+                    'event': 'error',
+                    'error.kind': e.class.name,
+                    'message': e.message
+                  )
                   raise
                 end
               end
@@ -197,8 +251,13 @@ module Kafka
               tracer.start_active_span('kafka.consumer', references: [reference], tags: tags) do |scope|
                 begin
                   block.call(message)
-                rescue StandardError
+                rescue StandardError => e
                   scope.span.set_tag('error', true)
+                  scope.span.log_kv(
+                    'event': 'error',
+                    'error.kind': e.class.name,
+                    'message': e.message
+                  )
                   raise
                 end
               end
@@ -220,7 +279,7 @@ module Kafka
         ::Kafka::Consumer.class_eval do
           alias_method :each_message_original, :each_message
 
-          def each_message(min_bytes: 1, max_bytes: 10485760, max_wait_time: 1, automatically_mark_as_processed: true)
+          def each_message(min_bytes: 1, max_bytes: 10_485_760, max_wait_time: 1, automatically_mark_as_processed: true)
             tracer = ::Kafka::Tracer.tracer
 
             wrapped_block = lambda { |message|
@@ -239,8 +298,13 @@ module Kafka
               tracer.start_active_span('kafka.consumer', references: [reference], tags: tags) do |scope|
                 begin
                   yield message
-                rescue StandardError
+                rescue StandardError => e
                   scope.span.set_tag('error', true)
+                  scope.span.log_kv(
+                    'event': 'error',
+                    'error.kind': e.class.name,
+                    'message': e.message
+                  )
                   raise
                 end
               end
