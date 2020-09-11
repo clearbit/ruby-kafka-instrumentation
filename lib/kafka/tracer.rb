@@ -147,7 +147,7 @@ module Kafka
             }
 
             result = nil
-            tracer.start_active_span('kafka.async_producer', tags) do |scope|
+            tracer.start_active_span('kafka.async_producer', tags: tags) do |scope|
               begin
                 result = produce_original(value, topic, **options)
               rescue Kafka::Error => e
