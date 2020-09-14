@@ -102,7 +102,9 @@ module Kafka
 
               tracer = ::Kafka::Tracer.tracer
               context = tracer.extract(OpenTracing::FORMAT_TEXT_MAP, headers)
-              tracer.start_active_span('kafka.producer', tags: tags, child_of: context) do |scope|
+              reference = OpenTracing::Reference.follows_from(context)
+
+              tracer.start_active_span('kafka.producer', tags: tags, references: [reference]) do |scope|
                 OpenTracing.inject(scope.span.context, OpenTracing::FORMAT_TEXT_MAP, headers)
 
                 begin
@@ -196,7 +198,9 @@ module Kafka
 
               tracer = ::Kafka::Tracer.tracer
               context = tracer.extract(OpenTracing::FORMAT_TEXT_MAP, headers)
-              tracer.start_active_span('kafka.producer', tags: tags, child_of: context) do |scope|
+              reference = OpenTracing::Reference.follows_from(context)
+
+              tracer.start_active_span('kafka.producer', tags: tags, references: [reference]) do |scope|
                 OpenTracing.inject(scope.span.context, OpenTracing::FORMAT_TEXT_MAP, headers)
 
                 begin

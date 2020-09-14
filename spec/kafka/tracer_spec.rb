@@ -40,14 +40,15 @@ RSpec.describe Kafka::Tracer do
 
     it 'follows semantic conventions for the span tags' do
       tracer = double(start_active_span: true)
-      allow(tracer).to receive(:extract)
+      reference = double
+      allow(tracer).to receive(:extract).and_return(reference)
+      allow(OpenTracing::Reference).to receive(:follows_from).and_return(reference)
       Kafka::Tracer.instrument(tracer: tracer)
 
       client.deliver_message('hello', headers: {}, topic: 'testing')
-
       expect(tracer).to have_received(:start_active_span).with(
         'kafka.producer',
-        child_of: nil,
+        references: [reference],
         tags: {
           'component' => 'ruby-kafka',
           'span.kind' => 'producer',
@@ -165,14 +166,16 @@ RSpec.describe Kafka::Tracer do
 
     it 'follows semantic conventions for the span tags' do
       tracer = double(start_active_span: true)
-      allow(tracer).to receive(:extract)
+      reference = double
+      allow(tracer).to receive(:extract).and_return(reference)
+      allow(OpenTracing::Reference).to receive(:follows_from).and_return(reference)
       Kafka::Tracer.instrument(tracer: tracer)
 
       producer.produce('hello', headers: {}, topic: 'testing')
 
       expect(tracer).to have_received(:start_active_span).with(
         'kafka.producer',
-        child_of: nil,
+        references: [reference],
         tags: {
           'component' => 'ruby-kafka',
           'span.kind' => 'producer',
