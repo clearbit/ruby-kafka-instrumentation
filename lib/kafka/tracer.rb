@@ -149,7 +149,7 @@ module Kafka
             result = nil
             tracer.start_active_span('kafka.async_producer', tags: tags) do |scope|
               begin
-                result = produce_original(value, topic, **options)
+                result = produce_original(value, topic: topic, **options)
               rescue Kafka::Error => e
                 scope.span.set_tag('error', true)
                 scope.span.log_kv(
