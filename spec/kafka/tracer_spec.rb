@@ -13,6 +13,8 @@ RSpec.describe Kafka::Tracer do
 
     it 'starts a span for the message' do
       tracer = double(start_active_span: true)
+      # context = double
+      allow(tracer).to receive(:extract)
       Kafka::Tracer.instrument(tracer: tracer)
       client.deliver_message('hello', headers: {}, topic: 'test')
       expect(tracer).to have_received(:start_active_span)
@@ -20,6 +22,7 @@ RSpec.describe Kafka::Tracer do
 
     it 'can be configured to skip creating a span for some messages' do
       tracer = double(start_active_span: true)
+      allow(tracer).to receive(:extract)
       allow(client).to receive(:deliver_message_original)
 
       Kafka::Tracer.instrument(
@@ -37,12 +40,14 @@ RSpec.describe Kafka::Tracer do
 
     it 'follows semantic conventions for the span tags' do
       tracer = double(start_active_span: true)
+      allow(tracer).to receive(:extract)
       Kafka::Tracer.instrument(tracer: tracer)
 
       client.deliver_message('hello', headers: {}, topic: 'testing')
 
       expect(tracer).to have_received(:start_active_span).with(
         'kafka.producer',
+        child_of: nil,
         tags: {
           'component' => 'ruby-kafka',
           'span.kind' => 'producer',
@@ -59,7 +64,7 @@ RSpec.describe Kafka::Tracer do
 
       span = double(set_tag: true, log_kv: nil, context: nil)
       scope = double(span: span)
-      tracer = double(start_active_span: true)
+      tracer = double(extract: true, start_active_span: true)
       allow(tracer).to receive(:start_active_span).and_yield(scope)
 
       Kafka::Tracer.instrument(tracer: tracer)
@@ -105,6 +110,7 @@ RSpec.describe Kafka::Tracer do
 
     it 'starts a span for the message' do
       tracer = double(start_active_span: true)
+      allow(tracer).to receive(:extract)
       Kafka::Tracer.instrument(tracer: tracer)
       producer.produce('hello', headers: {}, topic: 'test')
       expect(tracer).to have_received(:start_active_span)
@@ -134,6 +140,7 @@ RSpec.describe Kafka::Tracer do
 
     it 'starts a span for the message' do
       tracer = double(start_active_span: true)
+      allow(tracer).to receive(:extract)
       Kafka::Tracer.instrument(tracer: tracer)
       producer.produce('hello', headers: {}, topic: 'test')
       expect(tracer).to have_received(:start_active_span)
@@ -141,7 +148,7 @@ RSpec.describe Kafka::Tracer do
 
     it 'can be configured to skip creating a span for some messages' do
       tracer = double(start_active_span: true)
-
+      allow(tracer).to receive(:extract)
       Kafka::Tracer.instrument(
         tracer: tracer,
         ignore_message: ->(_value, _key, _headers, topic, _, _) { topic == 'ignore' }
@@ -158,12 +165,14 @@ RSpec.describe Kafka::Tracer do
 
     it 'follows semantic conventions for the span tags' do
       tracer = double(start_active_span: true)
+      allow(tracer).to receive(:extract)
       Kafka::Tracer.instrument(tracer: tracer)
 
       producer.produce('hello', headers: {}, topic: 'testing')
 
       expect(tracer).to have_received(:start_active_span).with(
         'kafka.producer',
+        child_of: nil,
         tags: {
           'component' => 'ruby-kafka',
           'span.kind' => 'producer',
@@ -182,6 +191,7 @@ RSpec.describe Kafka::Tracer do
       scope = double(span: span)
       tracer = double(start_active_span: true)
       allow(tracer).to receive(:start_active_span).and_yield(scope)
+      allow(tracer).to receive(:extract)
 
       Kafka::Tracer.instrument(tracer: tracer)
 
