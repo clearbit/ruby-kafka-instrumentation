@@ -2,6 +2,6 @@
 
 module Kafka
   module Tracer
-    VERSION = '0.5.1'
+    VERSION = '0.5.2'
   end
 end

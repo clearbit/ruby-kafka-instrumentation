@@ -134,7 +134,7 @@ module Kafka
         ::Kafka::AsyncProducer.class_eval do
           alias_method :produce_original, :produce
 
-          def produce(value, topic:, **options)
+          def produce(value, topic:, headers: {}, **options)
             tracer = ::Kafka::Tracer.tracer
 
             tags = {
@@ -148,8 +148,9 @@ module Kafka
 
             result = nil
             tracer.start_active_span('kafka.async_producer', tags: tags) do |scope|
+              OpenTracing.inject(scope.span.context, OpenTracing::FORMAT_TEXT_MAP, headers)
               begin
-                result = produce_original(value, topic: topic, **options)
+                result = produce_original(value, topic: topic, headers: headers, **options)
               rescue Kafka::Error => e
                 scope.span.set_tag('error', true)
                 scope.span.log_kv(
